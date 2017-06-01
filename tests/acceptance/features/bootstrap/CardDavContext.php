@@ -24,7 +24,8 @@ require __DIR__ . '/../../../../lib/composer/autoload.php';
 use Behat\Behat\Hook\Scope\BeforeScenarioScope;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\BadResponseException;
-use GuzzleHttp\Message\ResponseInterface;
+use Psr\Http\Message\ResponseInterface;
+use GuzzleHttp\Psr7\Request;
 
 class CardDavContext implements \Behat\Behat\Context\Context {
 	/** @var string  */
@@ -116,11 +117,14 @@ class CardDavContext implements \Behat\Behat\Context\Context {
 	public function userHasCreatedAnAddressbookNamed($user, $addressBook) {
 		$davUrl = $this->baseUrl . '/remote.php/dav/addressbooks/users/'.$user.'/'.$addressBook;
 
-		$request = $this->client->createRequest(
+		$options = [
+			'auth' => $this->featureContext->getAuthOptionForUser($user)
+		];
+		$request = new Request(
 			'MKCOL',
 			$davUrl,
-			[
-				'body' => '<d:mkcol xmlns:card="urn:ietf:params:xml:ns:carddav"
+			['Content-Type' => 'application/xml;charset=UTF-8'],
+			'<d:mkcol xmlns:card="urn:ietf:params:xml:ns:carddav"
               xmlns:d="DAV:">
     <d:set>
       <d:prop>
@@ -129,15 +133,10 @@ class CardDavContext implements \Behat\Behat\Context\Context {
           </d:resourcetype>,<d:displayname>'.$addressBook.'</d:displayname>
       </d:prop>
     </d:set>
-  </d:mkcol>',
-				'auth' => $this->featureContext->getAuthOptionForUser($user),
-				'headers' => [
-					'Content-Type' => 'application/xml;charset=UTF-8',
-				],
-			]
+  </d:mkcol>'
 		);
 
-		$this->response = $this->client->send($request);
+		$this->response = $this->client->send($request, $options);
 		$this->theCardDavHttpStatusCodeShouldBe(201);
 	}
 
