@@ -43,6 +43,9 @@ class ObjectStoreTest extends TestCase {
 	/** @var ObjectStoreStorage | \PHPUnit_Framework_MockObject_MockObject */
 	private $objectStore;
 
+	/**
+	 * @throws \Exception
+	 */
 	public function setUp() {
 		parent::setUp();
 		$this->impl = $this->createMock([IObjectStore::class, IVersionedObjectStorage::class]);
@@ -119,6 +122,9 @@ class ObjectStoreTest extends TestCase {
 	/**
 	 * @dataProvider providesMethods
 	 * @expectedException \OCP\Files\NotFoundException
+	 * @param string $method
+	 * @param bool $ignore
+	 * @throws NotFoundException
 	 */
 	public function testGetVersionsOfUnknownFile($method, $ignore = false) {
 		if ($ignore) {
@@ -130,6 +136,7 @@ class ObjectStoreTest extends TestCase {
 
 	/**
 	 * @dataProvider providesMethods
+	 * @param string $method
 	 */
 	public function testGetVersions($method) {
 		$path = 'file-with-versions.txt';
@@ -146,5 +153,10 @@ class ObjectStoreTest extends TestCase {
 			'getContentOfVersion' => ['getContentOfVersion'],
 			'restoreVersion' => ['restoreVersion'],
 		];
+	}
+
+	public function testDirectDownload() {
+		$this->impl->expects($this->once())->method('getDirectDownload')->willReturn([]);
+		$this->assertEquals([], $this->objectStore->getDirectDownload('urn:oid:666'));
 	}
 }
