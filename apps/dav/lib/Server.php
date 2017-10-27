@@ -50,6 +50,7 @@ use OCA\DAV\DAV\MiscCustomPropertiesBackend;
 use OCA\DAV\DAV\PublicAuth;
 use OCA\DAV\Files\BrowserErrorPagePlugin;
 use OCA\DAV\Files\PreviewPlugin;
+use OCA\DAV\Files\PublicFiles\PublicSharingAuth;
 use OCA\DAV\SystemTag\SystemTagPlugin;
 use OCA\DAV\Upload\ChunkingPlugin;
 use OCP\IRequest;
@@ -101,6 +102,7 @@ class Server {
 		$this->server->addPlugin(new BlockLegacyClientPlugin($config));
 		$this->server->addPlugin(new CorsPlugin(\OC::$server->getUserSession()));
 		$authPlugin = new Plugin();
+		$authPlugin->addBackend(new PublicSharingAuth($this->server, \OC::$server->getShareManager()));
 		$authPlugin->addBackend(new PublicAuth());
 		$this->server->addPlugin($authPlugin);
 
