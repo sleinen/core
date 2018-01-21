@@ -625,6 +625,7 @@ class OC_App {
 		if (!file_exists($path)) {
 			return false;
 		}
+		clearstatcache(false, $path);
 		$stat = stat($path);
 		if ($stat) {
 			// ok, file still exists
@@ -662,6 +663,9 @@ class OC_App {
 	public static function getAppInfo($appId, $isPath = false) {
 		if(empty($appId)) {
 			return null; // TODO explode?
+		}
+		if ($isPath) {
+			$appId = realpath($appId);
 		}
 
 		$etag = null;
@@ -709,6 +713,8 @@ class OC_App {
 			return null; // TODO explode?
 		}
 
+		$appId = $info['id']; // so we can fetch the right config value and cache correctly
+
 		// always use stored ocsid // TODO add / explain reason
 		if(isset($info['ocsid'])) {
 			$storedId = \OC::$server->getConfig()->getAppValue($appId, 'ocsid');
@@ -717,12 +723,16 @@ class OC_App {
 			}
 		}
 
+		$cachedInfo = $info;
+		$cachedInfo['_cached'] = true;
+		$info['_cached'] = false;
+
 		// add etag and path so cache can be invalidated
 		$data = [
 			'etag' => $etag,
 			'path' => $file,
 			// store info in its own key so path and etag cannot be injected
-			'info' => $info
+			'info' => $cachedInfo
 		];
 
 		// cache results for a day
