@@ -48,6 +48,9 @@ class AppTest extends \Test\TestCase {
 		$infoXmlPath = $this->appPath . '/appinfo/info.xml';
 		mkdir($this->appPath . '/appinfo', 0777, true);
 
+		\OC_App::clearAppCache('appinfotestapp');
+		\OC_App::clearAppCache($this->appPath.'/appinfo/info.xml');
+
 		$xml = '<?xml version="1.0" encoding="UTF-8"?>' .
 		'<info>' .
 		    '<id>appinfotestapp</id>' .
