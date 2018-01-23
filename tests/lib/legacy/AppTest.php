@@ -25,6 +25,9 @@
 namespace Test\legacy;
 
 function rrmdir($directory) {
+	if (!file_exists($directory)) {
+		return false;
+	}
 	$files = array_diff(scandir($directory), ['.','..']);
 	foreach ($files as $file) {
 		if (is_dir($directory . '/' . $file)) {
@@ -48,9 +51,6 @@ class AppTest extends \Test\TestCase {
 		$infoXmlPath = $this->appPath . '/appinfo/info.xml';
 		mkdir($this->appPath . '/appinfo', 0777, true);
 
-		\OC_App::clearAppCache('appinfotestapp');
-		\OC_App::clearAppCache($this->appPath.'/appinfo/info.xml');
-
 		$xml = '<?xml version="1.0" encoding="UTF-8"?>' .
 		'<info>' .
 		    '<id>appinfotestapp</id>' .
@@ -59,85 +59,61 @@ class AppTest extends \Test\TestCase {
 		file_put_contents($infoXmlPath, $xml);
 	}
 
-	public function testGetAppInfo() {
-		$info = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
+	private function assertEqualsAppInfo($info, array $changed = []) {
+		self::assertEquals( array_replace(
 			[
-				'id'=>'appinfotestapp',
+				'id' => 'appinfotestapp',
 				'namespace' => 'AppInfoTestApp',
+				'info' => [],
+				'remote' => [],
+				'public' => [],
+				'types' => [],
+				'repair-steps' => [
+					'install' => [],
+					'pre-migration' => [],
+					'post-migration' => [],
+					'live-migration' => [],
+					'uninstall' => [],
+				],
+				'background-jobs' => [],
+				'two-factor-providers' => [],
+				'commands' => [],
 				'_cached' => false,
-			],
+			], $changed),
 			$info
 		);
+	}
+
+	public function testGetAppInfo() {
+		$info = \OC_App::getAppInfo('appinfotestapp');
+		$this->assertEqualsAppInfo($info);
 
 		// now it should be cached
 		$info2 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => true,
-			],
-			$info2
-		);
+		$this->assertEqualsAppInfo($info2, ['_cached' => true]);
 	}
 
 	public function testGetAppInfoByIdFillsCacheForPath() {
 		$info = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => false,
-			],
-			$info
-		);
+		$this->assertEqualsAppInfo($info);
 
 		// should be cached, even if fetching by path
 		$info2 = \OC_App::getAppInfo($this->appPath.'/appinfo/info.xml', true);
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => true,
-			],
-			$info2
-		);
+		$this->assertEqualsAppInfo($info2, ['_cached' => true]);
 	}
 
 	public function testGetAppInfoByPathFillsCacheForAppId() {
 		$info = \OC_App::getAppInfo($this->appPath.'/appinfo/info.xml', true);
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => false,
-			],
-			$info
-		);
+		$this->assertEqualsAppInfo($info);
 
 		// should be cached, even if fetching by appid
 		$info2 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => true,
-			],
-			$info2
-		);
+		$this->assertEqualsAppInfo($info2, ['_cached' => true]);
 	}
 
 	public function testGetAppInfoXMLChange() {
 		$info = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => false,
-			],
-			$info
-		);
+		$this->assertEqualsAppInfo($info);
 
 		// change app namespace
 		$infoXmlPath = $this->appPath . '/appinfo/info.xml';
@@ -150,25 +126,11 @@ class AppTest extends \Test\TestCase {
 
 		// should return new namespace
 		$info2 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp2',
-				'_cached' => false,
-			],
-			$info2
-		);
+		$this->assertEqualsAppInfo($info2, ['namespace' => 'AppInfoTestApp2']);
 
 		// now it should be cached
 		$info3 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp2',
-				'_cached' => true,
-			],
-			$info3
-		);
+		$this->assertEqualsAppInfo($info3, ['_cached' => true, 'namespace' => 'AppInfoTestApp2']);
 	}
 
 	public function testGetAppInfoPathChange() {
@@ -183,38 +145,17 @@ class AppTest extends \Test\TestCase {
 
 		// fill cache with 'old' path
 		$info = \OC_App::getAppInfo($infoXmlPath, true);
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => false,
-			],
-			$info
-		);
+		$this->assertEqualsAppInfo($info);
 
 		unlink($infoXmlPath);
 
 		// check info can be found under new path by using the appid
 		$info2 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => false,
-			],
-			$info2
-		);
+		$this->assertEqualsAppInfo($info2);
 
 		// now it should be cached
 		$info3 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'_cached' => true,
-			],
-			$info3
-		);
+		$this->assertEqualsAppInfo($info3, ['_cached' => true]);
 	}
 
 	public function testGetAppInfoEmpty() {
@@ -243,29 +184,28 @@ class AppTest extends \Test\TestCase {
 		file_put_contents($infoXmlPath, $xml);
 
 		$info = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'ocsid' => 'oldocsidfromdb',
-				'_cached' => false,
-			],
-			$info
-		);
+		$this->assertEqualsAppInfo($info, ['ocsid' => 'oldocsidfromdb']);
 
 		// now it should be cached
 		$info2 = \OC_App::getAppInfo('appinfotestapp');
-		self::assertArraySubset(
-			[
-				'id'=>'appinfotestapp',
-				'namespace' => 'AppInfoTestApp',
-				'ocsid' => 'oldocsidfromdb',
-				'_cached' => true,
-			],
-			$info2
-		);
+		$this->assertEqualsAppInfo($info2, ['_cached' => true, 'ocsid' => 'oldocsidfromdb']);
 
 		\OC::$server->getConfig()->deleteAppValue('appinfotestapp', 'ocsid');
+	}
+
+	public function testGetAppInfoDeleted() {
+		$info = \OC_App::getAppInfo('appinfotestapp');
+		$this->assertEqualsAppInfo($info);
+
+		rrmdir($this->appPath);
+
+		// now it should be null
+		$info2 = \OC_App::getAppInfo('appinfotestapp');
+		self::assertNull($info2);
+
+		// via path as well
+		$info3 = \OC_App::getAppInfo($this->appPath.'/appinfo/info.xml', true);
+		self::assertNull($info3);
 	}
 
 	protected function tearDown() {
