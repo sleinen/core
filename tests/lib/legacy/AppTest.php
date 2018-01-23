@@ -210,7 +210,7 @@ class AppTest extends \Test\TestCase {
 
 	protected function tearDown() {
 		\OC_App::clearAppCache('appinfotestapp');
-		\OC_App::clearAppCache($this->appPath.'/appinfo/info.xml');
+		\OC_App::clearAppCache(realpath($this->appPath.'/appinfo/info.xml'));
 		rrmdir($this->appPath);
 		parent::tearDown();
 	}
