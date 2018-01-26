@@ -56,11 +56,8 @@ use OC\Repair;
  * upgrading and removing apps.
  */
 class OC_App {
-	static private $appVersion = [];
 	static private $adminForms = [];
 	static private $personalForms = [];
-	/** @var \OCP\ICache */
-	static private $appInfo = null;
 	static private $appTypes = [];
 	static private $loadedApps = [];
 	static private $loadedTypes = [];
@@ -269,7 +266,7 @@ class OC_App {
 		}
 		$appTypes = self::getAppTypes($app);
 		foreach ($types as $type) {
-			if (array_search($type, $appTypes) !== false) {
+			if (in_array($type, $appTypes, true)) {
 				return true;
 			}
 		}
@@ -299,7 +296,7 @@ class OC_App {
 	 * read app types from info.xml and cache them in the database
 	 */
 	public static function setAppTypes($app) {
-		$appData = self::getAppInfo($app);
+		$appData = \OC::$server->getAppManager($app);
 		if(!is_array($appData)) {
 			return;
 		}
@@ -310,7 +307,7 @@ class OC_App {
 			$appTypes = '';
 		}
 
-		\OC::$server->getAppConfig()->setValue($app, 'types', $appTypes);
+		\OC::$server->getConfig()->setAppValue($app, 'types', $appTypes);
 	}
 
 	/**
@@ -351,7 +348,7 @@ class OC_App {
 			$user = \OC::$server->getUserSession()->getUser();
 		}
 
-		if (is_null($user)) {
+		if ($user === null) {
 			$apps = $appManager->getInstalledApps();
 		} else {
 			$apps = $appManager->getEnabledAppsForUser($user);
@@ -392,7 +389,7 @@ class OC_App {
 		// check for required dependencies
 		$config = \OC::$server->getConfig();
 		$l = \OC::$server->getL10N('core');
-		$info = self::getAppInfo($app);
+		$info = \OC::$server->getAppManager()->getAppInfo($app);
 		if ($info === null) {
 			throw new \Exception("$app can't be enabled since it is not installed.");
 		}
@@ -404,7 +401,7 @@ class OC_App {
 		}
 
 		$appManager = \OC::$server->getAppManager();
-		if (!is_null($groups)) {
+		if ($groups !== null) {
 			$groupManager = \OC::$server->getGroupManager();
 			$groupsList = [];
 			foreach ($groups as $group) {
@@ -447,8 +444,8 @@ class OC_App {
 		self::$enabledAppsCache = [];
 
 		// run uninstall steps
-		$appData = OC_App::getAppInfo($app);
-		if (!is_null($appData)) {
+		$appData = \OC::$server->getAppManager()->getAppInfo($app);
+		if ($appData !== null) {
 			OC_App::executeRepairSteps($app, $appData['repair-steps']['uninstall']);
 		}
 
@@ -596,13 +593,14 @@ class OC_App {
 	 *
 	 * @param string $appId
 	 * @return string
+	 * @deprecated use \OC::$server->getAppManager()->getAppInfo($appId)
 	 */
 	public static function getAppVersion($appId) {
-		if (!isset(self::$appVersion[$appId])) {
-			$file = self::getAppPath($appId);
-			self::$appVersion[$appId] = ($file !== false) ? self::getAppVersionByPath($file) : '0';
+		$info = \OC::$server->getAppManager()->getAppInfo($appId);
+		if (isset($info['version'])) {
+			return $info['version'];
 		}
-		return self::$appVersion[$appId];
+		return '0';
 	}
 
 	/**
@@ -610,46 +608,15 @@ class OC_App {
 	 *
 	 * @param string $path
 	 * @return string
+	 * @deprecated use \OC::$server->getAppManager()->getAppInfoByPath($path)
 	 */
 	public static function getAppVersionByPath($path) {
+		\OC::$server->getLogger()->warning('getAppVersionByPath is deprecated', ['app' => __CLASS__]);
 		$infoFile = $path . '/appinfo/info.xml';
-		$appData = self::getAppInfo($infoFile, true);
+		/** @var \OC\App\AppManager $am */
+		$am = \OC::$server->getAppManager();
+		$appData = $am->getAppInfoByPath($infoFile);
 		return isset($appData['version']) ? $appData['version'] : '';
-	}
-
-	/**
-	 * @param $path
-	 * @return string|false an etag for the given $path or false
-	 */
-	private static function getEtag($path) {
-		if (!file_exists($path)) {
-			return false;
-		}
-		clearstatcache(false, $path);
-		$stat = stat($path);
-		if ($stat) {
-			// ok, file still exists
-			return "${stat['mtime']}|${stat['ino']}|${stat['dev']}|${stat['size']}";
-		}
-		return false;
-	}
-
-	/**
-	 * if available use a local cache that survives requests, otherwise
-	 * fallback to an in memory implementation of \OCP\ICache
-	 */
-	static private function setupAppInfoCache(){
-		if (self::$appInfo === null) {
-			// TODO not beautiful, clean up when getting rid of this legacy class
-			$cache = \OC::$server->getMemCacheFactory();
-			if (method_exists($cache, 'createLocal')) {
-				// TODO we have no puplic API for this
-				self::$appInfo = \OC::$server->getMemCacheFactory()->createLocal('app-info');
-			}
-			if (self::$appInfo === null || self::$appInfo instanceof \OC\Memcache\NullCache) {
-				self::$appInfo = new \OC\Memcache\ArrayCache('app-info');
-			}
-		};
 	}
 
 	/**
@@ -659,87 +626,17 @@ class OC_App {
 	 * @param boolean $path (optional)
 	 * @return array|null
 	 * @note all data is read from info.xml, not just pre-defined fields
+	 * @deprecated use \OC::$server->getAppManager()->getAppInfo($appId)
 	 */
 	public static function getAppInfo($appId, $isPath = false) {
-		if(empty($appId)) {
-			return null; // TODO explode?
-		}
+		\OC::$server->getLogger()->warning('getAppInfo is deprecated', ['app' => __CLASS__]);
+		/** @var \OC\App\AppManager $am */
+		$am = \OC::$server->getAppManager();
 		if ($isPath) {
-			$appId = realpath($appId);
-		}
-
-		$etag = null;
-
-		self::setupAppInfoCache();
-
-		// check the cache
-		$data = self::$appInfo->get($appId);
-		if (isset($data['path'])) {
-			// check that that info file hasn't changed by comparing the etag
-			$etag = self::getEtag($data['path']);
-			if ($data['etag'] === $etag) {
-				// nice, etags still the same, return from cache!
-				return $data['info'];
-			}
-		}
-
-		if ($isPath) {
-			$file = $appId;
+			return $am->getAppInfoByPath($appId);
 		} else {
-			$appPath = self::getAppPath($appId);
-			if($appPath === false) {
-				// app no longer exists
-				return null; // TODO explode?
-			}
-			$file = $appPath . '/appinfo/info.xml';
-			if (isset($data['path']) && $data['path'] !== $file) {
-				// path changed, invalidate etag
-				$etag = null;
-			}
+			return $am->getAppInfo($appId);
 		}
-
-		// if we still have an etag, the content changed but the etag is up to
-		// date. otherwise the path changed and we have to recalculate it
-		if (!$etag) {
-			$etag = self::getEtag($file);
-		}
-
-		// reparse the actual file
-		$parser = new InfoParser();
-		$info = $parser->parse($file);
-		if (is_array($info)) {
-			$info = \OC_App::parseAppInfo($info);
-		} else {
-			return null; // TODO explode?
-		}
-
-		$appId = $info['id']; // so we can fetch the right config value and cache correctly
-
-		// always use stored ocsid // TODO add / explain reason
-		if(isset($info['ocsid'])) {
-			$storedId = \OC::$server->getConfig()->getAppValue($appId, 'ocsid');
-			if($storedId !== '' && $storedId !== $info['ocsid']) {
-				$info['ocsid'] = $storedId;
-			}
-		}
-
-		$cachedInfo = $info;
-		$cachedInfo['_cached'] = true;
-		$info['_cached'] = false;
-
-		// add etag and path so cache can be invalidated
-		$data = [
-			'etag' => $etag,
-			'path' => $file,
-			// store info in its own key so path and etag cannot be injected
-			'info' => $cachedInfo
-		];
-
-		// cache results for a day
-		self::$appInfo->set($appId, $data, 86400);
-		self::$appInfo->set($file, $data, 86400);
-
-		return $info;
 	}
 
 	/**
@@ -860,16 +757,17 @@ class OC_App {
 
 		foreach (OC::$APPSROOTS as $apps_dir) {
 			if (!is_readable($apps_dir['path'])) {
-				\OCP\Util::writeLog('core', 'unable to read app folder : ' . $apps_dir['path'], \OCP\Util::WARN);
+				\OC::$server->getLogger()->warning("unable to read app folder: ${apps_dir['path']}", ['app'=>__CLASS__]);
 				continue;
 			}
 			$dh = opendir($apps_dir['path']);
 
 			if (is_resource($dh)) {
 				while (($file = readdir($dh)) !== false) {
-
-					if ($file[0] != '.' and is_dir($apps_dir['path'] . '/' . $file) and is_file($apps_dir['path'] . '/' . $file . '/appinfo/info.xml')) {
-
+					if ($file[0] !== '.'
+						&& is_dir("${apps_dir['path']}/$file")
+						&& is_file("${apps_dir['path']}/$file/appinfo/info.xml")
+					) {
 						$apps[] = $file;
 					}
 				}
@@ -899,20 +797,20 @@ class OC_App {
 		$urlGenerator = \OC::$server->getURLGenerator();
 
 		foreach ($installedApps as $app) {
-			if (array_search($app, $blacklist) === false) {
+			if (!in_array($app, $blacklist, true)) {
 
-				$info = OC_App::getAppInfo($app);
+				$info = \OC::$server->getAppManager()->getAppInfo($app);
 				if (!is_array($info)) {
-					\OCP\Util::writeLog('core', 'Could not read app info file for app "' . $app . '"', \OCP\Util::ERROR);
+					\OC::$server->getLogger()->error("Could not read app info file for app '$app'", ['app'=>__CLASS__]);
 					continue;
 				}
 
 				if (!isset($info['name'])) {
-					\OCP\Util::writeLog('core', 'App id "' . $app . '" has no name in appinfo', \OCP\Util::ERROR);
+					\OC::$server->getLogger()->error("App id '$app' has no name in appinfo", ['app'=>__CLASS__]);
 					continue;
 				}
 
-				$enabled = \OC::$server->getAppConfig()->getValue($app, 'enabled', 'no');
+				$enabled = \OC::$server->getConfig()->getAppValue($app, 'enabled', 'no');
 				$info['groups'] = null;
 				if ($enabled === 'yes') {
 					$active = true;
@@ -967,8 +865,6 @@ class OC_App {
 						$info['documentation'][$key] = $url;
 					}
 				}
-
-				$info['version'] = OC_App::getAppVersion($app);
 				$appList[] = $info;
 			}
 		}
@@ -984,8 +880,8 @@ class OC_App {
 	public static function getInternalAppIdByOcs($ocsID) {
 		if(is_numeric($ocsID)) {
 			$idArray = \OC::$server->getAppConfig()->getValues(false, 'ocsid');
-			if(array_search($ocsID, $idArray)) {
-				return array_search($ocsID, $idArray);
+			if(in_array($ocsID, $idArray, true)) {
+				return array_search($ocsID, $idArray, true);
 			}
 		}
 		return false;
@@ -993,10 +889,10 @@ class OC_App {
 
 	public static function shouldUpgrade($app) {
 		$versions = self::getAppVersions();
-		$currentVersion = OC_App::getAppVersion($app);
-		if ($currentVersion && isset($versions[$app])) {
+		$info = \OC::$server->getAppManager()->getAppInfo($app);
+		if ($info && isset($versions[$app])) {
 			$installedVersion = $versions[$app];
-			if (!version_compare($currentVersion, $installedVersion, '=')) {
+			if (!version_compare($info['version'], $installedVersion, '=')) {
 				return true;
 			}
 		}
@@ -1102,7 +998,7 @@ class OC_App {
 		if($appPath === false) {
 			return false;
 		}
-		$appData = self::getAppInfo($appId);
+		$appData = \OC::$server->getAppManager()->getAppInfo($appId);
 		self::executeRepairSteps($appId, $appData['repair-steps']['pre-migration']);
 		if (isset($appData['use-migrations']) && $appData['use-migrations'] === 'true') {
 			$ms = new \OC\DB\MigrationService($appId, \OC::$server->getDatabaseConnection());
@@ -1114,7 +1010,7 @@ class OC_App {
 		}
 		self::executeRepairSteps($appId, $appData['repair-steps']['post-migration']);
 		self::setupLiveMigrations($appId, $appData['repair-steps']['live-migration']);
-		self::clearAppCache($appId);
+		\OC::$server->getAppManager()->clearAppsCache();
 		// run upgrade code
 		if (file_exists($appPath . '/appinfo/update.php')) {
 			self::loadApp($appId, false);
@@ -1137,8 +1033,7 @@ class OC_App {
 
 		self::setAppTypes($appId);
 
-		$version = \OC_App::getAppVersion($appId);
-		\OC::$server->getAppConfig()->setValue($appId, 'installed_version', $version);
+		\OC::$server->getConfig()->setAppValue($appId, 'installed_version', $appData['version']);
 
 		return true;
 	}
@@ -1203,14 +1098,12 @@ class OC_App {
 					$view->mkdir($appId);
 				}
 				return new \OC\Files\View('/' . OC_User::getUser() . '/' . $appId);
-			} else {
-				\OCP\Util::writeLog('core', 'Can\'t get app storage, app ' . $appId . ', user not logged in', \OCP\Util::ERROR);
-				return false;
 			}
-		} else {
-			\OCP\Util::writeLog('core', 'Can\'t get app storage, app ' . $appId . ' not enabled', \OCP\Util::ERROR);
+			\OC::$server->getLogger()->error("Can't get app storage, app '$appId', user not logged in", ['app'=>__CLASS__]);
 			return false;
 		}
+		\OC::$server->getLogger()->error("Can't get app storage, app '$appId' not enabled", ['app'=>__CLASS__]);
+		return false;
 	}
 
 	/**
@@ -1260,7 +1153,7 @@ class OC_App {
 		$dependencyAnalyzer = new DependencyAnalyzer(new Platform($config), $l);
 		$missing = $dependencyAnalyzer->analyze($info);
 		if (!empty($missing)) {
-			$missingMsg = join(PHP_EOL, $missing);
+			$missingMsg = implode(PHP_EOL, $missing);
 			throw new \Exception(
 				$l->t('App "%s" cannot be installed because the following dependencies are not fulfilled: %s',
 					[$info['name'], $missingMsg]
@@ -1271,11 +1164,9 @@ class OC_App {
 
 	/**
 	 * @param $appId
+	 * @deprecated no longer needed
 	 */
 	public static function clearAppCache($appId) {
-		unset(self::$appVersion[$appId]);
-		if (self::$appInfo instanceof \OCP\ICache) {
-			self::$appInfo->remove($appId);
-		}
+		\OC::$server->getLogger()->warning('clearAppCache is deprecated', ['app' => __CLASS__]);
 	}
 }
