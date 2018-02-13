@@ -611,7 +611,6 @@ class OC_App {
 	 * @deprecated use \OC::$server->getAppManager()->getAppInfoByPath($path)
 	 */
 	public static function getAppVersionByPath($path) {
-		\OC::$server->getLogger()->warning('getAppVersionByPath is deprecated', ['app' => __CLASS__]);
 		$infoFile = $path . '/appinfo/info.xml';
 		/** @var \OC\App\AppManager $am */
 		$am = \OC::$server->getAppManager();
@@ -629,7 +628,6 @@ class OC_App {
 	 * @deprecated use \OC::$server->getAppManager()->getAppInfo($appId)
 	 */
 	public static function getAppInfo($appId, $isPath = false) {
-		\OC::$server->getLogger()->warning('getAppInfo is deprecated', ['app' => __CLASS__]);
 		/** @var \OC\App\AppManager $am */
 		$am = \OC::$server->getAppManager();
 		if ($isPath) {
