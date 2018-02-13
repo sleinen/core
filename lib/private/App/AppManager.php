@@ -403,6 +403,8 @@ class AppManager implements IAppManager {
 				// nice, etag is still the same, return from cache!
 				return $data['info'];
 			}
+			// invalidate cache
+			$this->appInfo->remove($appId);
 		}
 
 		$appPath = $this->getAppPath($appId);
