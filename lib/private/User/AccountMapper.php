@@ -243,4 +243,36 @@ class AccountMapper extends Mapper {
 		$stmt->closeCursor();
 	}
 
+	/**
+	 * @param string $backend
+	 * @param bool $hasLoggedIn
+	 * @param integer $limit
+	 * @param integer $offset
+	 * @return string[]
+	 */
+	public function findUserIds($backend = null, $hasLoggedIn = null, $limit = null, $offset = null) {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('user_id')
+			->from($this->getTableName());
+		if ($backend !== null) {
+			$qb->andWhere($qb->expr()->eq('backend', $qb->createNamedParameter($backend)));
+		}
+		if ($hasLoggedIn === true) {
+			$qb->andWhere($qb->expr()->gt('last_login', new Literal(0)));
+		} else if ($hasLoggedIn === false) {
+			$qb->andWhere($qb->expr()->eq('last_login', new Literal(0)));
+		}
+		if ($limit !== null) {
+			$qb->setMaxResults($limit);
+		}
+		if ($offset !== null) {
+			$qb->setFirstResult($offset);
+		}
+
+		$stmt = $qb->execute();
+		$rows = $stmt->fetchAll();
+		$stmt->closeCursor();
+		return $rows;
+	}
+
 }
