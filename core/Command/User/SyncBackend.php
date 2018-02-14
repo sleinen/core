@@ -194,12 +194,12 @@ class SyncBackend extends Command {
 		$output->writeln('Insert new and update existing users ...');
 		$p = new ProgressBar($output);
 		$max = null;
-		if ($backend->implementsActions(\OC_User_Backend::COUNT_USERS) && $input->hasOption('showCount')) {
+		if ($backend->implementsActions(\OC_User_Backend::COUNT_USERS) && $input->getOption('showCount')) {
 			$max = $backend->countUsers();
 		}
 		$p->start($max);
 
-		if ($input->hasOption('seenOnly')) {
+		if ($input->getOption('seenOnly')) {
 			$iterator = new SeenUsersIterator($this->accountMapper, get_class($backend));
 		} else {
 			$iterator = new AllUsersIterator($backend);
