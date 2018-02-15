@@ -131,7 +131,7 @@ class NavigationManager implements INavigationManager {
 			return;
 		}
 		$this->init = true;
-		if (is_null($this->appManager)) {
+		if ($this->appManager === null) {
 			return;
 		}
 		foreach ($this->appManager->getInstalledApps() as $app) {
@@ -141,6 +141,11 @@ class NavigationManager implements INavigationManager {
 				continue;
 			}
 			$nav = $info['navigation'];
+
+			// handle pure frontend apps here
+			if (isset($info['frontend'])) {
+				$nav['route'] = "$app.view.index";
+			}
 			if (!isset($nav['route'])) {
 				continue;
 			}
@@ -163,8 +168,8 @@ class NavigationManager implements INavigationManager {
 				}
 			}
 
-			if (is_null($iconPath)) {
-				$iconPath = $this->urlGenerator->imagePath('core', 'default-app-icon');
+			if ($iconPath === null) {
+				$iconPath = $this->urlGenerator->imagePath('core', 'default-app-icon.svg');
 			}
 
 			$this->add([
