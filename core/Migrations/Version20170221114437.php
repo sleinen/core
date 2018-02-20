@@ -25,7 +25,6 @@ class Version20170221114437 implements ISimpleMigration {
 		// insert/update known users
 		$out->info("Insert new users ...");
 		$out->startProgress($backend->countUsers());
-		$backend->
 		$syncService->run($backend, new AllUsersIterator($backend), function () use ($out) {
 			$out->advance();
 		});
