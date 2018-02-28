@@ -26,11 +26,16 @@
 
 namespace OC\Core\Command\Db;
 
+use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Type;
 use OC\DB\MDB2SchemaManager;
-use \OCP\IConfig;
+use OCP\App\IAppManager;
+use OCP\IConfig;
 use OC\DB\Connection;
 use OC\DB\ConnectionFactory;
 use OC\DB\MigrationService;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
@@ -50,13 +55,21 @@ class ConvertType extends Command {
 	 */
 	protected $connectionFactory;
 
+	/** @var IAppManager */
+	protected $appManager;
+
+	/** @var string[][] */
+	protected $tableColumnTypes;
+
 	/**
 	 * @param \OCP\IConfig $config
 	 * @param \OC\DB\ConnectionFactory $connectionFactory
+	 * @param IAppManager $appManager
 	 */
-	public function __construct(IConfig $config, ConnectionFactory $connectionFactory) {
+	public function __construct(IConfig $config, ConnectionFactory $connectionFactory, IAppManager $appManager) {
 		$this->config = $config;
 		$this->connectionFactory = $connectionFactory;
+		$this->appManager = $appManager;
 		parent::__construct();
 	}
 
@@ -118,6 +131,10 @@ class ConvertType extends Command {
 		;
 	}
 
+	/**
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 */
 	protected function validateInput(InputInterface $input, OutputInterface $output) {
 		$type = $this->connectionFactory->normalizeType($input->getArgument('type'));
 		if ($type === 'sqlite3') {
@@ -142,6 +159,10 @@ class ConvertType extends Command {
 		}
 	}
 
+	/**
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 */
 	protected function readPassword(InputInterface $input, OutputInterface $output) {
 		// Explicitly specified password
 		if ($input->getOption('password')) {
@@ -162,7 +183,7 @@ class ConvertType extends Command {
 		if ($input->isInteractive()) {
 			/** @var $dialog \Symfony\Component\Console\Helper\QuestionHelper */
 			$dialog = $this->getHelperSet()->get('question');
-			$q = new Question('<question>Enter a new password: </question>', false);
+			$q = new Question('<question>Enter a password to access a target database: </question>', false);
 			$q->setHidden(true);
 			$password = $dialog->ask($input, $output, $q);
 			$input->setOption('password', $password);
@@ -170,6 +191,12 @@ class ConvertType extends Command {
 		}
 	}
 
+	/**
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 * @return int|null|void
+	 * @throws \Exception
+	 */
 	protected function execute(InputInterface $input, OutputInterface $output) {
 		$this->validateInput($input, $output);
 		$this->readPassword($input, $output);
@@ -197,7 +224,8 @@ class ConvertType extends Command {
 			}
 			/** @var $dialog \Symfony\Component\Console\Helper\QuestionHelper */
 			$dialog = $this->getHelperSet()->get('question');
-			if (!$dialog->ask($input, $output, new Question('<question>Continue with the conversion (y/n)? [n] </question>', false))) {
+			$continue = $dialog->ask($input, $output, new Question('<question>Continue with the conversion (y/n)? [n] </question>', false));
+			if ($continue !== 'y') {
 				return;
 			}
 		}
@@ -205,25 +233,35 @@ class ConvertType extends Command {
 		$this->convertDB($fromDB, $toDB, $intersectingTables, $input, $output);
 	}
 
+	/**
+	 * @param Connection $fromDB
+	 * @param Connection $toDB
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 */
 	protected function createSchema(Connection $fromDB, Connection $toDB, InputInterface $input, OutputInterface $output) {
 		$output->writeln('<info>Creating schema in new database</info>');
 		$schemaManager = new MDB2SchemaManager($toDB);
 		$schemaManager->createDbFromStructure(\OC::$SERVERROOT.'/db_structure.xml');
-
 		$this->replayMigrations($fromDB, $toDB, 'core');
 
-		$apps = $input->getOption('all-apps') ? \OC_App::getAllApps() : \OC_App::getEnabledApps();
+		$apps = $input->getOption('all-apps') ? $this->appManager->getAllApps() : $this->appManager->getInstalledApps();
 		foreach($apps as $app) {
 			// Some apps has a cheat initial migration that creates schema from database.xml
 			// So the app can have database.xml and use migrations in the same time
 			if ($this->appHasMigrations($app)){
 				$this->replayMigrations($fromDB, $toDB, $app);
-			} elseif (file_exists(\OC_App::getAppPath($app).'/appinfo/database.xml')) {
-				$schemaManager->createDbFromStructure(\OC_App::getAppPath($app).'/appinfo/database.xml');
+			} elseif (file_exists($this->appManager->getAppPath($app).'/appinfo/database.xml')) {
+				$schemaManager->createDbFromStructure($this->appManager->getAppPath($app).'/appinfo/database.xml');
 			}
 		}
 	}
 
+	/**
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 * @return Connection
+	 */
 	protected function getToDBConnection(InputInterface $input, OutputInterface $output) {
 		$type = $input->getArgument('type');
 		$connectionParams = [
@@ -239,6 +277,13 @@ class ConvertType extends Command {
 		return $this->connectionFactory->getConnection($type, $connectionParams);
 	}
 
+	/**
+	 * @param Connection $fromDB
+	 * @param Connection $toDB
+	 * @param $app
+	 * @throws \Exception
+	 * @throws \OC\NeedsUpdateException
+	 */
 	protected function replayMigrations(Connection $fromDB, Connection $toDB, $app) {
 		if ($app !== 'core') {
 			\OC_App::loadApp($app);
@@ -251,20 +296,33 @@ class ConvertType extends Command {
 		}
 	}
 
+	/**
+	 * @param string $app
+	 * @return bool
+	 */
 	protected function appHasMigrations($app) {
-		return is_dir(\OC_App::getAppPath($app).'/appinfo/Migrations');
+		return is_dir($this->appManager->getAppPath($app).'/appinfo/Migrations');
 	}
 
+	/**
+	 * @param Connection $db
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 */
 	protected function clearSchema(Connection $db, InputInterface $input, OutputInterface $output) {
 		$toTables = $this->getTables($db);
 		if (!empty($toTables)) {
 			$output->writeln('<info>Clearing schema in new database</info>');
-		}
-		foreach($toTables as $table) {
-			$db->getSchemaManager()->dropTable($table);
+			foreach($toTables as $table) {
+				$db->getSchemaManager()->dropTable($table);
+			}
 		}
 	}
 
+	/**
+	 * @param Connection $db
+	 * @return string[]
+	 */
 	protected function getTables(Connection $db) {
 		$filterExpression = '/^' . preg_quote($this->config->getSystemValue('dbtableprefix', 'oc_')) . '/';
 		$db->getConfiguration()->
@@ -272,7 +330,15 @@ class ConvertType extends Command {
 		return $db->getSchemaManager()->listTableNames();
 	}
 
-	protected function copyTable(Connection $fromDB, Connection $toDB, $table, InputInterface $input, OutputInterface $output) {
+	/**
+	 * @param Connection $fromDB
+	 * @param Connection $toDB
+	 * @param Table $table
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 */
+	protected function copyTable(Connection $fromDB, Connection $toDB, Table $table, InputInterface $input, OutputInterface $output) {
+		$tableName = $table->getName();
 		$chunkSize = $input->getOption('chunk-size');
 
 		$progress = new ProgressBar($output);
@@ -280,7 +346,7 @@ class ConvertType extends Command {
 		$query = $fromDB->getQueryBuilder();
 		$query->automaticTablePrefix(false);
 		$query->selectAlias($query->createFunction('COUNT(*)'), 'num_entries')
-			->from($table);
+			->from($tableName);
 		$result = $query->execute();
 		$count = $result->fetchColumn();
 		$result->closeCursor();
@@ -294,16 +360,28 @@ class ConvertType extends Command {
 		$redraw = $count > $chunkSize ? 100 : ($count > 100 ? 5 : 1);
 		$progress->setRedrawFrequency($redraw);
 
-
 		$query = $fromDB->getQueryBuilder();
 		$query->automaticTablePrefix(false);
 		$query->select('*')
-			->from($table)
+			->from($tableName)
 			->setMaxResults($chunkSize);
+
+		try {
+			$orderColumns = $table->getPrimaryKeyColumns();
+		} catch (DBALException $e) {
+			$orderColumns = [];
+			foreach ($table->getColumns() as $column) {
+				$orderColumns[] = $column->getName();
+			}
+		}
+
+		foreach ($orderColumns as $column) {
+			$query->addOrderBy($column);
+		}
 
 		$insertQuery = $toDB->getQueryBuilder();
 		$insertQuery->automaticTablePrefix(false);
-		$insertQuery->insert($table);
+		$insertQuery->insert($tableName);
 		$parametersCreated = false;
 
 		for ($chunk = 0; $chunk < $numChunks; $chunk++) {
@@ -321,7 +399,7 @@ class ConvertType extends Command {
 				}
 
 				foreach ($row as $key => $value) {
-					$insertQuery->setParameter($key, $value);
+					$insertQuery->setParameter($key, $value, $this->tableColumnTypes[$tableName][$key]);
 				}
 				$insertQuery->execute();
 			}
@@ -330,21 +408,54 @@ class ConvertType extends Command {
 		$progress->finish();
 	}
 
+	/**
+	 * @param Table $table
+	 * @return mixed
+	 */
+	protected function getColumnTypes(Table $table) {
+		$tableName = $table->getName();
+		foreach ($table->getColumns() as $column){
+			$columnName = $column->getName();
+			$type = $table->getColumn($columnName)->getType()->getName();
+			switch ($type) {
+				case Type::BLOB:
+				case Type::TEXT:
+					$this->tableColumnTypes[$tableName][$columnName] = IQueryBuilder::PARAM_LOB;
+					break;
+				default:
+					$this->tableColumnTypes[$tableName][$columnName] = null;
+			}
+		}
+		return $this->tableColumnTypes[$table];
+	}
+
+
+	/**
+	 * @param Connection $fromDB
+	 * @param Connection $toDB
+	 * @param string[] $tables
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 * @throws \Exception
+	 */
 	protected function convertDB(Connection $fromDB, Connection $toDB, array $tables, InputInterface $input, OutputInterface $output) {
 		$this->config->setSystemValue('maintenance', true);
 		try {
+			$fromSchema = $fromDB->createSchema();
 			// copy table rows
-			foreach($tables as $table) {
-				$output->writeln($table);
-				if ($table === $toDB->getPrefix() . 'migrations') {
+			foreach($tables as $tableName) {
+				$table = $fromSchema->getTable($tableName);
+				if ($tableName === $toDB->getPrefix() . 'migrations') {
 					$output->writeln(
 						sprintf(
 							'<info>Skipping "%s" as it already has migrations data</info>',
-							$table
+							$tableName
 						)
 					);
 					return;
 				}
+				$output->writeln($tableName);
+				$this->tableColumnTypes[$tableName] = $this->getColumnTypes($table);
 				$this->copyTable($fromDB, $toDB, $table, $input, $output);
 			}
 			if ($input->getArgument('type') === 'pgsql') {
@@ -360,6 +471,9 @@ class ConvertType extends Command {
 		$this->config->setSystemValue('maintenance', false);
 	}
 
+	/**
+	 * @param InputInterface $input
+	 */
 	protected function saveDBInfo(InputInterface $input) {
 		$type = $input->getArgument('type');
 		$username = $input->getArgument('username');
