@@ -13,7 +13,7 @@
 		"davclient.js/lib/client.js",
 		"clipboard/dist/clipboard.js",
 		"bowser/src/bowser.js",
-        "select2/select2.js"
+		"select2/select2.js"
 	],
 	"libraries": [
 		"jquery-showpassword.js",

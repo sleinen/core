@@ -18,7 +18,7 @@
 		'  <span class="emailPrivateLinkForm--send-indicator success-message-global absolute-center hidden">{{sending}}</span>' +
 		'  <label class="public-link-modal--label" for="emailPrivateLinkField-{{cid}}">{{mailLabel}}</label>' +
 		'  <input class="public-link-modal--input emailPrivateLinkForm--emailField" id="emailPrivateLinkField-{{cid}}" value="" type="hidden" />' +
-        '  <select id="uu"><option>1</option><option>2</option></select>' +
+		'  <select id="uu"><option>1</option><option>2</option></select>' +
 		'  <div class="emailPrivateLinkForm--elements hidden">' +
 		'    {{#if userHasEmail}}' +
 		'    <label class="public-link-modal--bccSelf">' +
@@ -53,13 +53,13 @@
 		_template: undefined,
 
 		initialize: function(options) {
-            _.bindAll(this, 'render', 'afterRender');
-            var _this = this;
-            this.render = _.wrap(this.render, function(render) {
-                render();
-                _this.afterRender();
-                return _this;
-            });
+			_.bindAll(this, 'render', 'afterRender');
+			var _this = this;
+			this.render = _.wrap(this.render, function(render) {
+				render();
+				_this.afterRender();
+				return _this;
+			});
 
 			if (!_.isUndefined(options.itemModel)) {
 				this.itemModel = options.itemModel;
@@ -182,13 +182,13 @@
 
 		},
 
-        afterRender: function () {
-            this.$el.find('.emailPrivateLinkForm--emailField').select2({
-                // data:[{id:0,text:'enhancement'},{id:1,text:'bug'},{id:2,text:'duplicate'},{id:3,text:'invalid'},{id:4,text:'wontfix'}],
-                tags:["hi"],
-                tokenSeparators:[","]
-            });
-        },
+		afterRender: function () {
+			this.$el.find('.emailPrivateLinkForm--emailField').select2({
+				// data:[{id:0,text:'enhancement'},{id:1,text:'bug'},{id:2,text:'duplicate'},{id:3,text:'invalid'},{id:4,text:'wontfix'}],
+				tags:["hi"],
+				tokenSeparators:[","]
+			});
+		},
 
 		/**
 		 * @returns {Function} from Handlebars
