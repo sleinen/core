@@ -152,7 +152,7 @@ class Swift implements IObjectStore {
 		$this->container->delete($recursive);
 	}
 
-	function getDirectDownload($urn) {
+	function getDirectDownload($urn, $versionId = null) {
 		$this->init();
 		$object = $this->container->getObject($urn);
 		return $object->getTemporaryUrl(20*60, 'GET');
