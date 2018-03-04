@@ -158,12 +158,19 @@ class File extends Node implements IFile {
 		}
 
 		try {
-			$view = \OC\Files\Filesystem::getView();
-			if ($view) {
-				$run = $this->emitPreHooks($exists);
-			} else {
-				$run = true;
-			}
+			try {
+                $view = \OC\Files\Filesystem::getView();
+                if ($view) {
+                    $run = $this->emitPreHooks($exists);
+                } else {
+                    $run = true;
+                }
+            } catch (\Exception $e) {
+                if ($needsPartFile) {
+                    $partStorage->unlink($internalPartPath);
+                }
+                $this->convertToSabreException($e);
+            }
 
 			try {
 				$this->changeLock(ILockingProvider::LOCK_EXCLUSIVE);
