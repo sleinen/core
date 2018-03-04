@@ -435,6 +435,13 @@ class File extends Node implements IFile {
 
 					$chunk_handler->file_assemble($partStorage, $partInternalPath, $this->fileView->getAbsolutePath($targetPath));
 
+					//assembly might take a while, double check db connection is still alive
+					$conn = \OC::$server->getDatabaseConnection();
+					if ($conn->ping() === false) {
+						$conn->close();
+						$conn->connect();
+					}
+
 					// here is the final atomic rename
 					$renameOkay = $targetStorage->moveFromStorage($partStorage, $partInternalPath, $targetInternalPath);
 					$fileExists = $targetStorage->file_exists($targetInternalPath);
