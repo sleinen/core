@@ -85,6 +85,10 @@ class File extends Node implements IFile {
 	 * @return string|null
 	 */
 	public function put($data) {
+
+        $start_microtime = microtime(true);
+        $db_check_interval = 300;
+
 		try {
 			$exists = $this->fileView->file_exists($this->path);
 			if ($this->info && $exists && !$this->info->isUpdateable()) {
@@ -159,6 +163,17 @@ class File extends Node implements IFile {
 
 		try {
 			try {
+                if ((microtime(true) - $start_microtime) >= $db_check_interval*1e6) {
+                    $conn = \OC::$server->getDatabaseConnection();
+                    if ($conn->ping() === false) {
+                        if ( ! $conn->inTransaction() ) {
+                            throw new Exception('A long WebDAV upload caused the database connection to timeout during a transaction. Try increasing the database connection timeout.');
+                        }
+                        $conn->close();
+                        $conn->connect();
+                    }
+                }
+
                 $view = \OC\Files\Filesystem::getView();
                 if ($view) {
                     $run = $this->emitPreHooks($exists);
